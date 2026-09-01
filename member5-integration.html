@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Member 5 — Integration</title>
+<style>
+  :root{
+    --bg:#15130f; --panel:#1d1a15; --panel-2:#242019; --line:#3a3327;
+    --text:#eee6d6; --dim:#a89a80; --accent:#c98a3a;
+    --normal:#4caf7d; --watch:#dfc23f; --developing:#e2891f; --critical:#e0524f;
+    --pushcol:#5aa3d8;
+    --mono: ui-monospace,'SF Mono','Cascadia Mono',Consolas,monospace;
+    --sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
+  body{padding:22px;max-width:1400px;margin:0 auto;}
+
+  h1{font-size:19px;margin:0 0 2px 0;font-weight:600;}
+  .sub{color:var(--dim);font-family:var(--mono);font-size:12px;margin-bottom:14px;}
+
+  .note{
+    background:var(--panel-2);border:1px solid var(--line);border-radius:6px;
+    padding:10px 14px;font-size:12px;color:var(--dim);margin-bottom:18px;line-height:1.6;
+  }
+
+  .controls{display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;}
+  button{
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    padding:9px 14px;border-radius:6px;font-family:var(--sans);font-size:13px;cursor:pointer;
+    font-weight:500;transition:border-color .15s, opacity .15s;
+  }
+  button:hover:not(:disabled){border-color:var(--accent);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  button.primary{background:var(--accent);color:#1a1712;border-color:var(--accent);font-weight:700;}
+  button.danger{background:#3a1f1c;border-color:#7a3a34;color:#f0b8ae;}
+  button.danger:hover:not(:disabled){border-color:var(--critical);}
+  button.ghost{background:transparent;}
+
+  .pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
+  .stage{
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:14px;position:relative;
+  }
+  .stage h3{margin:0 0 3px 0;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);}
+  .stage .who{font-size:11px;color:var(--dim);font-family:var(--mono);margin-bottom:10px;}
+  .stage .value{font-family:var(--mono);font-size:12.5px;color:var(--text);min-height:32px;}
+  .arrow{position:absolute;right:-18px;top:50%;transform:translateY(-50%);color:var(--dim);font-size:18px;}
+  .stage:last-child .arrow{display:none;}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media (max-width:980px){.grid{grid-template-columns:1fr;}}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;}
+  h2.section{
+    font-size:11px;text-transform:uppercase;letter-spacing:1.1px;color:var(--dim);
+    margin:0 0 10px 0;border-bottom:1px solid var(--line);padding-bottom:8px;
+  }
+
+  .log{font-family:var(--mono);font-size:11.5px;max-height:400px;overflow-y:auto;}
+  .log div{padding:5px 0;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:flex-start;}
+  .tag{
+    flex-shrink:0;width:56px;font-size:9.5px;padding:2px 0;text-align:center;
+    border-radius:10px;font-weight:700;text-transform:uppercase;color:#14120e;
+  }
+  .tag.gen{background:var(--normal);}
+  .tag.evt{background:var(--developing);}
+  .tag.chk{background:var(--pushcol);color:#fff;}
+  .tag.push{background:var(--accent);}
+
+  pre{
+    background:var(--panel-2);border:1px solid var(--line);border-radius:6px;
+    padding:12px;font-family:var(--mono);font-size:11px;line-height:1.6;
+    max-height:400px;overflow-y:auto;margin:0;white-space:pre-wrap;word-break:break-word;
+  }
+</style>
+</head>
+<body>
+
+<h1>Member 5 — Integration</h1>
+<div class="sub">Connects the other four pieces — makes sure data actually flows end to end, live, without manual refresh.</div>
+
+<div class="note">
+  This page doesn't generate readings, decide events, or draw the map itself. It sits in the middle: pulls from a mock Member 1 feed, applies a mock Member 2 event, validates the schema matches what Member 4 expects, then pushes it out. The pipeline below shows that handoff happening every tick.
+</div>
+
+<div class="controls">
+  <button class="primary" id="btnStart">▶ Start Pipeline</button>
+  <button class="danger" id="btnTrigger">⚠ Trigger Event (via Member 2)</button>
+  <button id="btnSpike">⚡ Spike Test (via Member 2)</button>
+  <button class="ghost" id="btnReset">↺ Reset</button>
+</div>
+
+<div class="pipeline">
+  <div class="stage">
+    <h3>Member 1</h3>
+    <div class="who">Raw sensor feed</div>
+    <div class="value" id="s1">waiting…</div>
+    <div class="arrow">→</div>
+  </div>
+  <div class="stage">
+    <h3>Member 2</h3>
+    <div class="who">Event modifier</div>
+    <div class="value" id="s2">no event active</div>
+    <div class="arrow">→</div>
+  </div>
+  <div class="stage">
+    <h3>Member 5</h3>
+    <div class="who">Validate + merge</div>
+    <div class="value" id="s5">idle</div>
+    <div class="arrow">→</div>
+  </div>
+  <div class="stage">
+    <h3>Member 4</h3>
+    <div class="who">Dashboard receives</div>
+    <div class="value" id="s4">no data yet</div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="panel">
+    <h2 class="section">Integration Log</h2>
+    <div class="log" id="log"></div>
+  </div>
+  <div class="panel">
+    <h2 class="section">Payload Delivered to Member 4</h2>
+    <pre id="jsonOut"></pre>
+  </div>
+</div>
+
+<script>
+const NODE_COUNT = 8;
+let nodes = [];
+for(let i=0;i<NODE_COUNT;i++){
+  nodes.push({
+    id: 'N' + String(i+1).padStart(2,'0'),
+    state: 'normal', severity: 0,
+    tilt: 1.0, vibration: 0.02, displacement: 0.5, crack: 0.1
+  });
+}
+nodes.forEach((n,i)=>{
+  n.neighbors = nodes.filter((o,j)=>j!==i).map(o=>o.id);
+});
+
+function noise(v, amt){ return v + (Math.random()-0.5)*amt; }
+
+function log(tag, msg){
+  const el = document.getElementById('log');
+  const div = document.createElement('div');
+  div.innerHTML = `<span class="tag ${tag}">${tag}</span><span>[${new Date().toLocaleTimeString()}] ${msg}</span>`;
+  el.prepend(div);
+}
+
+function member1Generate(){
+  nodes.forEach(n=>{
+    const sev = n.severity;
+    n.tilt = Math.max(0, noise(1.0 + sev*2.4, 0.06));
+    n.vibration = Math.max(0, noise(0.02 + sev*0.35, 0.01));
+    n.displacement = Math.max(0, noise(0.5 + sev*8.0, 0.15));
+    n.crack = Math.max(0, noise(0.1 + sev*1.6, 0.03));
+  });
+  document.getElementById('s1').textContent = `${nodes.length} nodes emitted this tick`;
+}
+
+function schemaValid(payload){
+  const required = ['node_id','timestamp','tilt_deg','vibration_g','displacement_mm','crack_mm','state'];
+  return payload.every(row => required.every(k => k in row));
+}
+
+function member5Merge(){
+  const payload = nodes.map(n => ({
+    node_id: n.id,
+    timestamp: new Date().toISOString(),
+    tilt_deg: +n.tilt.toFixed(3),
+    vibration_g: +n.vibration.toFixed(4),
+    displacement_mm: +n.displacement.toFixed(3),
+    crack_mm: +n.crack.toFixed(3),
+    state: n.state
+  }));
+  const ok = schemaValid(payload);
+  document.getElementById('s5').textContent = ok ? 'schema OK · merged' : 'schema MISMATCH';
+  if(!ok){ log('chk', 'Schema check failed — payload rejected'); return null; }
+  return payload;
+}
+
+function member4Receive(payload){
+  document.getElementById('s4').textContent = `rendered ${payload.length} nodes on map`;
+  document.getElementById('jsonOut').textContent = JSON.stringify(payload.slice(0,3), null, 2) + '\n...';
+}
+
+let pipelineTimer = null;
+function pipelineTick(){
+  member1Generate();
+  const activeCount = nodes.filter(n=>n.severity>0).length;
+  document.getElementById('s2').textContent = activeCount>0
+    ? `modifying ${activeCount} node(s)`
+    : 'no event active';
+  const payload = member5Merge();
+  if(payload){
+    member4Receive(payload);
+    if(Math.random()<0.15) log('push', 'Pushed tick to dashboard, no refresh needed');
+  }
+}
+
+function startPipeline(){
+  if(pipelineTimer) return;
+  log('gen', 'Pipeline started — Member 1 feed live');
+  pipelineTimer = setInterval(pipelineTick, 900);
+}
+
+let eventTimer = null;
+function triggerEvent(){
+  if(eventTimer) return;
+  const seed = nodes[Math.floor(Math.random()*nodes.length)];
+  log('evt', `Member 2 signaled event start on ${seed.id}`);
+  let stage = 0;
+  eventTimer = setInterval(()=>{
+    stage++;
+    if(stage===1){ seed.severity=0.3; seed.state='developing'; log('evt', `${seed.id} → developing`); }
+    else if(stage===2){
+      seed.severity=0.6;
+      seed.neighbors.forEach(id=>{
+        const n = nodes.find(x=>x.id===id);
+        if(Math.random()<0.6){ n.severity=0.25; n.state='developing'; }
+      });
+      log('evt', 'Neighboring nodes updated');
+    } else if(stage===3){
+      seed.severity=1.0; seed.state='critical';
+      nodes.forEach(n=>{ if(n.id!==seed.id && n.severity>0){ n.severity=0.6; n.state='critical'; } });
+      log('evt', 'Cluster escalated to critical');
+    } else if(stage>=4){
+      nodes.forEach(n=>{ if(n.severity>0){ n.severity=1.0; n.state='critical'; } });
+      log('evt', 'Event stabilized');
+      clearInterval(eventTimer); eventTimer=null;
+    }
+  }, 2200);
+}
+
+function spikeTest(){
+  const n = nodes[Math.floor(Math.random()*nodes.length)];
+  n.state='spike'; n.severity=0.9;
+  log('evt', `Member 2 signaled isolated spike on ${n.id}`);
+  setTimeout(()=>{
+    n.state='normal'; n.severity=0;
+    log('evt', `${n.id} spike cleared`);
+  }, 6000);
+}
+
+function resetAll(){
+  nodes.forEach(n=>{ n.state='normal'; n.severity=0; });
+  if(eventTimer){ clearInterval(eventTimer); eventTimer=null; }
+  log('chk', 'Pipeline reset to normal conditions');
+}
+
+document.getElementById('btnStart').addEventListener('click', startPipeline);
+document.getElementById('btnTrigger').addEventListener('click', triggerEvent);
+document.getElementById('btnSpike').addEventListener('click', spikeTest);
+document.getElementById('btnReset').addEventListener('click', resetAll);
+
+startPipeline();
+</script>
+</body>
+</html>

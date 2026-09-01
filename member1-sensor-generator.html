@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Member 1 — Sensor Data Generator</title>
+<style>
+  :root{
+    --bg:#12100e;
+    --panel:#1c1815;
+    --line:#332c26;
+    --amber:#e8a33d;
+    --safe:#5fae7a;
+    --text:#eae4da;
+    --dim:#8f8577;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Segoe UI',system-ui,sans-serif;
+    padding:28px;
+  }
+  h1{margin:0 0 4px;font-size:20px;}
+  h1 span{color:var(--amber);}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:20px;}
+  .controls{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap;}
+  button{
+    background:var(--panel);color:var(--text);border:1px solid var(--line);
+    padding:9px 16px;font-size:13px;cursor:pointer;border-radius:3px;
+  }
+  button:hover{border-color:#5a4c3e;}
+  button:disabled{opacity:0.4;cursor:default;}
+  label{color:var(--dim);font-size:13px;display:flex;align-items:center;gap:8px;}
+  select,input[type=number]{
+    background:var(--panel);color:var(--text);border:1px solid var(--line);
+    padding:6px 8px;border-radius:3px;font-size:13px;
+  }
+  .layout{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:16px;}
+  .panel h2{margin:0 0 12px;font-size:12px;letter-spacing:0.5px;color:var(--dim);text-transform:uppercase;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;}
+  .pill{padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;color:#191512;background:var(--safe);}
+  pre{
+    background:#0f0d0b;border:1px solid var(--line);border-radius:4px;
+    padding:12px;font-size:12px;line-height:1.5;max-height:420px;overflow-y:auto;
+    margin:0;white-space:pre-wrap;word-break:break-word;
+  }
+  .stat{font-size:12px;color:var(--dim);margin-top:10px;}
+</style>
+</head>
+<body>
+
+<h1>Member 1 <span>/ Sensor Data Generator</span></h1>
+<div class="sub">Standalone harness — continuous virtual sensor readings under normal conditions only. No events, no map.</div>
+
+<div class="controls">
+  <button id="btnToggle">Pause</button>
+  <label>Nodes
+    <select id="nodeCount">
+      <option value="8">8</option>
+      <option value="20" selected>20</option>
+      <option value="32">32</option>
+      <option value="50">50</option>
+    </select>
+  </label>
+  <label>Interval (ms)
+    <input type="number" id="interval" value="1000" min="200" step="100" style="width:80px">
+  </label>
+</div>
+
+<div class="layout">
+  <div class="panel">
+    <h2>Node Readings (latest tick)</h2>
+    <table>
+      <thead>
+        <tr><th>Node</th><th>Status</th><th>Tilt</th><th>Vibration</th><th>Displacement</th><th>Crack</th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="stat" id="stat"></div>
+  </div>
+  <div class="panel">
+    <h2>Live JSON Output (per node, per tick)</h2>
+    <pre id="jsonOut"></pre>
+  </div>
+</div>
+
+<script>
+let nodes = [];
+let timer = null;
+let running = true;
+let tickCount = 0;
+
+function buildNodes(count){
+  nodes = [];
+  for(let i=0;i<count;i++){
+    nodes.push({
+      id: 'N' + String(i+1).padStart(2,'0'),
+      tilt: 1.0, vibration: 0.02, displacement: 0.5, crack: 0.1
+    });
+  }
+}
+
+function noise(v, amt){ return v + (Math.random()-0.5)*amt; }
+
+function tick(){
+  tickCount++;
+  const stamp = new Date().toISOString();
+  nodes.forEach(n=>{
+    n.tilt = Math.max(0, noise(1.0, 0.06));
+    n.vibration = Math.max(0, noise(0.02, 0.01));
+    n.displacement = Math.max(0, noise(0.5, 0.15));
+    n.crack = Math.max(0, noise(0.1, 0.03));
+    n.timestamp = stamp;
+  });
+  render();
+}
+
+function render(){
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = nodes.map(n => `
+    <tr>
+      <td>${n.id}</td>
+      <td><span class="pill">normal</span></td>
+      <td>${n.tilt.toFixed(2)}</td>
+      <td>${n.vibration.toFixed(3)}</td>
+      <td>${n.displacement.toFixed(2)}</td>
+      <td>${n.crack.toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  const payload = nodes.map(n => ({
+    node_id: n.id,
+    timestamp: n.timestamp,
+    tilt_deg: +n.tilt.toFixed(3),
+    vibration_g: +n.vibration.toFixed(4),
+    displacement_mm: +n.displacement.toFixed(3),
+    crack_mm: +n.crack.toFixed(3)
+  }));
+  document.getElementById('jsonOut').textContent = JSON.stringify(payload, null, 2);
+  document.getElementById('stat').textContent = `Ticks emitted: ${tickCount} · Nodes: ${nodes.length}`;
+}
+
+function start(){
+  const ms = Math.max(200, parseInt(document.getElementById('interval').value) || 1000);
+  if(timer) clearInterval(timer);
+  timer = setInterval(tick, ms);
+}
+
+document.getElementById('btnToggle').addEventListener('click', (e)=>{
+  running = !running;
+  if(running){ start(); e.target.textContent='Pause'; }
+  else { clearInterval(timer); timer=null; e.target.textContent='Resume'; }
+});
+
+document.getElementById('nodeCount').addEventListener('change', (e)=>{
+  buildNodes(parseInt(e.target.value));
+  tickCount = 0;
+  render();
+});
+
+document.getElementById('interval').addEventListener('change', ()=>{
+  if(running) start();
+});
+
+buildNodes(20);
+render();
+start();
+</script>
+</body>
+</html>

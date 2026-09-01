@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Member 3 — Mine Map + Sensor Positions</title>
+<style>
+  :root{
+    --bg:#12100e;
+    --panel:#1c1815;
+    --line:#332c26;
+    --amber:#e8a33d;
+    --text:#eae4da;
+    --dim:#8f8577;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Segoe UI',system-ui,sans-serif;
+    padding:28px;
+  }
+  h1{margin:0 0 4px;font-size:20px;}
+  h1 span{color:var(--amber);}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:20px;}
+  .controls{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap;}
+  button,select{
+    background:var(--panel);color:var(--text);border:1px solid var(--line);
+    padding:9px 16px;font-size:13px;cursor:pointer;border-radius:3px;
+  }
+  button:hover{border-color:#5a4c3e;}
+  label{color:var(--dim);font-size:13px;display:flex;align-items:center;gap:8px;}
+  .layout{display:grid;grid-template-columns:1.2fr 1fr;gap:20px;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:16px;}
+  .panel h2{margin:0 0 12px;font-size:12px;letter-spacing:0.5px;color:var(--dim);text-transform:uppercase;}
+  #mapsvg{background:#191512;border:1px solid var(--line);border-radius:4px;width:100%;height:auto;}
+  .node-dot{fill:var(--amber);stroke:#000;stroke-width:0.5;cursor:pointer;}
+  .node-dot.selected{stroke:var(--text);stroke-width:2;}
+  table{width:100%;border-collapse:collapse;font-size:12px;}
+  th,td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--line);}
+  th{color:var(--dim);font-weight:600;font-size:10px;text-transform:uppercase;}
+  pre{
+    background:#0f0d0b;border:1px solid var(--line);border-radius:4px;
+    padding:12px;font-size:11px;line-height:1.5;max-height:260px;overflow-y:auto;
+    margin:0;white-space:pre-wrap;word-break:break-word;
+  }
+</style>
+</head>
+<body>
+
+<h1>Member 3 <span>/ Mine Map + Sensor Positions</span></h1>
+<div class="sub">Static layout only — node IDs, coordinates, clusters, neighbor lists. No live readings, no events.</div>
+
+<div class="controls">
+  <label>Nodes
+    <select id="nodeCount">
+      <option value="20">20</option>
+      <option value="32" selected>32</option>
+      <option value="50">50</option>
+    </select>
+  </label>
+  <button id="btnRegen">Regenerate Layout</button>
+</div>
+
+<div class="layout">
+  <div class="panel">
+    <h2>Mine Layout</h2>
+    <svg id="mapsvg" viewBox="0 0 760 460"></svg>
+  </div>
+  <div class="panel">
+    <h2>Node Table</h2>
+    <table>
+      <thead><tr><th>ID</th><th>Cluster</th><th>X</th><th>Y</th><th>Neighbors</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel" style="margin-top:20px">
+  <h2>Layout JSON (handoff to Member 5)</h2>
+  <pre id="jsonOut"></pre>
+</div>
+
+<script>
+const svgNS = "http://www.w3.org/2000/svg";
+let nodes = [];
+let selectedId = null;
+
+function buildLayout(count){
+  nodes = [];
+  const clusterCount = Math.max(3, Math.round(count/6));
+  const centers = [];
+  for(let i=0;i<clusterCount;i++){
+    centers.push([
+      100 + Math.random()*560,
+      80 + Math.random()*300
+    ]);
+  }
+  let id = 0;
+  for(let i=0;i<count;i++){
+    const ci = i % clusterCount;
+    const c = centers[ci];
+    const angle = Math.random()*Math.PI*2;
+    const r = 25 + Math.random()*35;
+    nodes.push({
+      id: 'N' + String(id+1).padStart(2,'0'),
+      cluster: ci,
+      x: Math.round(Math.max(20, Math.min(740, c[0] + Math.cos(angle)*r))),
+      y: Math.round(Math.max(20, Math.min(440, c[1] + Math.sin(angle)*r)))
+    });
+    id++;
+  }
+  nodes.forEach(n=>{
+    n.neighbors = nodes
+      .filter(o=>o.id!==n.id && o.cluster===n.cluster)
+      .map(o=>o.id);
+  });
+}
+
+function drawMap(){
+  const svg = document.getElementById('mapsvg');
+  svg.innerHTML = '';
+  const bg = document.createElementNS(svgNS,'rect');
+  bg.setAttribute('x',0);bg.setAttribute('y',0);
+  bg.setAttribute('width',760);bg.setAttribute('height',460);
+  bg.setAttribute('fill','#191512');
+  svg.appendChild(bg);
+
+  nodes.forEach(n=>{
+    n.neighbors.forEach(nb=>{
+      const other = nodes.find(o=>o.id===nb);
+      if(other.id > n.id) return;
+      const line = document.createElementNS(svgNS,'line');
+      line.setAttribute('x1',n.x);line.setAttribute('y1',n.y);
+      line.setAttribute('x2',other.x);line.setAttribute('y2',other.y);
+      line.setAttribute('stroke','#2a2420');
+      line.setAttribute('stroke-width','1');
+      svg.appendChild(line);
+    });
+  });
+
+  nodes.forEach(n=>{
+    const dot = document.createElementNS(svgNS,'circle');
+    dot.setAttribute('cx',n.x);dot.setAttribute('cy',n.y);
+    dot.setAttribute('r',7);
+    dot.setAttribute('class','node-dot'+(selectedId===n.id?' selected':''));
+    dot.setAttribute('id','dot-'+n.id);
+    dot.addEventListener('click', ()=>{ selectedId=n.id; drawMap(); renderTable(); });
+    svg.appendChild(dot);
+
+    const label = document.createElementNS(svgNS,'text');
+    label.setAttribute('x',n.x);
+    label.setAttribute('y',n.y-11);
+    label.setAttribute('fill','#8f8577');
+    label.setAttribute('font-size','9');
+    label.setAttribute('text-anchor','middle');
+    label.textContent = n.id;
+    svg.appendChild(label);
+  });
+}
+
+function renderTable(){
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = nodes.map(n => `
+    <tr style="${selectedId===n.id ? 'background:#241f1a' : ''}">
+      <td>${n.id}</td>
+      <td>${n.cluster+1}</td>
+      <td>${n.x}</td>
+      <td>${n.y}</td>
+      <td>${n.neighbors.length}</td>
+    </tr>
+  `).join('');
+
+  const payload = nodes.map(n=>({
+    node_id: n.id,
+    cluster: n.cluster+1,
+    x: n.x,
+    y: n.y,
+    neighbors: n.neighbors
+  }));
+  document.getElementById('jsonOut').textContent = JSON.stringify(payload, null, 2);
+}
+
+document.getElementById('btnRegen').addEventListener('click', ()=>{
+  selectedId = null;
+  buildLayout(parseInt(document.getElementById('nodeCount').value));
+  drawMap();
+  renderTable();
+});
+
+document.getElementById('nodeCount').addEventListener('change', (e)=>{
+  selectedId = null;
+  buildLayout(parseInt(e.target.value));
+  drawMap();
+  renderTable();
+});
+
+buildLayout(32);
+drawMap();
+renderTable();
+</script>
+</body>
+</html>

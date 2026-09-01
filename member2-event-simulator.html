@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Member 2 — Subsidence Event Simulator</title>
+<style>
+  :root{
+    --bg:#12100e;
+    --panel:#1c1815;
+    --line:#332c26;
+    --amber:#e8a33d;
+    --safe:#5fae7a;
+    --warn:#d98c3d;
+    --crit:#c94f3a;
+    --spike:#4a6fa5;
+    --text:#eae4da;
+    --dim:#8f8577;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Segoe UI',system-ui,sans-serif;
+    padding:28px;
+  }
+  h1{margin:0 0 4px;font-size:20px;}
+  h1 span{color:var(--amber);}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:20px;}
+  .controls{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;}
+  button{
+    background:var(--panel);color:var(--text);border:1px solid var(--line);
+    padding:9px 16px;font-size:13px;cursor:pointer;border-radius:3px;
+  }
+  button:hover{border-color:#5a4c3e;}
+  button.primary{background:var(--crit);border-color:var(--crit);color:#fff;}
+  button.spike{background:var(--warn);border-color:var(--warn);color:#1c1815;}
+  .layout{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:16px;}
+  .panel h2{margin:0 0 12px;font-size:12px;letter-spacing:0.5px;color:var(--dim);text-transform:uppercase;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;}
+  .pill{padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;color:#191512;}
+  pre{
+    background:#0f0d0b;border:1px solid var(--line);border-radius:4px;
+    padding:12px;font-size:12px;line-height:1.5;max-height:340px;overflow-y:auto;
+    margin:0;white-space:pre-wrap;word-break:break-word;
+  }
+  .event-log{font-size:12px;color:var(--dim);max-height:150px;overflow-y:auto;margin-top:16px;}
+  .event-log div{padding:3px 0;border-bottom:1px solid var(--line);}
+</style>
+</head>
+<body>
+
+<h1>Member 2 <span>/ Subsidence Event Simulator</span></h1>
+<div class="sub">Standalone harness — no map, no dashboard. Just the event logic and its JSON output.</div>
+
+<div class="controls">
+  <button id="btnTrigger" class="primary">Trigger Subsidence</button>
+  <button id="btnSpike" class="spike">Random Spike Test</button>
+  <button id="btnReset">Reset</button>
+</div>
+
+<div class="layout">
+  <div class="panel">
+    <h2>Cluster Node States</h2>
+    <table>
+      <thead>
+        <tr><th>Node</th><th>State</th><th>Tilt</th><th>Vibration</th><th>Displacement</th><th>Crack</th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="event-log" id="log"></div>
+  </div>
+  <div class="panel">
+    <h2>Live JSON Output (per node, per tick)</h2>
+    <pre id="jsonOut"></pre>
+  </div>
+</div>
+
+<script>
+const NODE_COUNT = 8;
+let nodes = [];
+for(let i=0;i<NODE_COUNT;i++){
+  nodes.push({
+    id: 'N' + String(i+1).padStart(2,'0'),
+    state: 'normal',
+    severity: 0,
+    tilt: 1.0, vibration: 0.02, displacement: 0.5, crack: 0.1
+  });
+}
+nodes.forEach((n,i)=>{
+  n.neighbors = nodes.filter((o,j)=>j!==i).map(o=>o.id);
+});
+
+function noise(v, amt){ return v + (Math.random()-0.5)*amt; }
+
+function stateColor(s){
+  if(s==='spike') return getComputedStyle(document.documentElement).getPropertyValue('--spike');
+  if(s==='critical') return getComputedStyle(document.documentElement).getPropertyValue('--crit');
+  if(s==='developing') return getComputedStyle(document.documentElement).getPropertyValue('--warn');
+  return getComputedStyle(document.documentElement).getPropertyValue('--safe');
+}
+
+function tick(){
+  nodes.forEach(n=>{
+    const sev = n.severity;
+    n.tilt = Math.max(0, noise(1.0 + sev*2.4, 0.06));
+    n.vibration = Math.max(0, noise(0.02 + sev*0.35, 0.01));
+    n.displacement = Math.max(0, noise(0.5 + sev*8.0, 0.15));
+    n.crack = Math.max(0, noise(0.1 + sev*1.6, 0.03));
+  });
+  render();
+}
+
+function render(){
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = nodes.map(n => `
+    <tr>
+      <td>${n.id}</td>
+      <td><span class="pill" style="background:${stateColor(n.state)}">${n.state}</span></td>
+      <td>${n.tilt.toFixed(2)}</td>
+      <td>${n.vibration.toFixed(3)}</td>
+      <td>${n.displacement.toFixed(2)}</td>
+      <td>${n.crack.toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  const payload = nodes.map(n => ({
+    node_id: n.id,
+    timestamp: new Date().toISOString(),
+    tilt_deg: +n.tilt.toFixed(3),
+    vibration_g: +n.vibration.toFixed(4),
+    displacement_mm: +n.displacement.toFixed(3),
+    crack_mm: +n.crack.toFixed(3),
+    state: n.state
+  }));
+  document.getElementById('jsonOut').textContent = JSON.stringify(payload, null, 2);
+}
+
+function log(msg){
+  const el = document.getElementById('log');
+  const div = document.createElement('div');
+  div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.prepend(div);
+}
+
+let eventTimer = null;
+function triggerSubsidence(){
+  if(eventTimer) return;
+  const seed = nodes[Math.floor(Math.random()*nodes.length)];
+  log(`Event triggered — seed node ${seed.id}`);
+
+  let stage = 0;
+  eventTimer = setInterval(()=>{
+    stage++;
+    if(stage===1){
+      seed.severity = 0.3; seed.state='developing';
+      log(`${seed.id} entering early stage`);
+    } else if(stage===2){
+      seed.severity = 0.6;
+      seed.neighbors.forEach(id=>{
+        const n = nodes.find(x=>x.id===id);
+        if(Math.random()<0.6){ n.severity = 0.25; n.state='developing'; }
+      });
+      log('Nearby nodes beginning to shift');
+    } else if(stage===3){
+      seed.severity = 1.0; seed.state='critical';
+      nodes.forEach(n=>{
+        if(n.id!==seed.id && n.severity>0){ n.severity = 0.6; n.state='critical'; }
+      });
+      log('Escalating — critical zone forming');
+    } else if(stage>=4){
+      nodes.forEach(n=>{
+        if(n.severity>0){ n.severity = 1.0; n.state='critical'; }
+      });
+      log('Deformation stabilized at critical level');
+      clearInterval(eventTimer);
+      eventTimer = null;
+    }
+  }, 2200);
+}
+
+function spikeTest(){
+  const n = nodes[Math.floor(Math.random()*nodes.length)];
+  n.state = 'spike';
+  n.severity = 0.9;
+  log(`Isolated spike on ${n.id} — neighbours unaffected`);
+  setTimeout(()=>{
+    n.state='normal'; n.severity=0;
+    log(`${n.id} spike cleared`);
+  }, 6000);
+}
+
+function resetAll(){
+  nodes.forEach(n=>{ n.state='normal'; n.severity=0; });
+  if(eventTimer){ clearInterval(eventTimer); eventTimer=null; }
+  log('Reset to normal conditions');
+  render();
+}
+
+document.getElementById('btnTrigger').addEventListener('click', triggerSubsidence);
+document.getElementById('btnSpike').addEventListener('click', spikeTest);
+document.getElementById('btnReset').addEventListener('click', resetAll);
+
+setInterval(tick, 900);
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Member 4 — Live Mine Subsidence Dashboard</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+
+<style>
+  :root{
+    --bg:#15130f; --panel:#1d1a15; --panel-2:#242019; --line:#3a3327;
+    --text:#eee6d6; --dim:#a89a80; --accent:#c98a3a;
+    --pA:#5aa3d8; --pB:#e0a941; --pC:#4caf7d;
+    --normal:#4caf7d; --watch:#dfc23f; --developing:#e2891f; --critical:#e0524f;
+    --mono: ui-monospace,'SF Mono','Cascadia Mono',Consolas,monospace;
+    --sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
+  body{padding:22px;max-width:1400px;margin:0 auto;}
+  #root{min-height:100vh;}
+
+  h1{font-size:19px;margin:0 0 2px 0;font-weight:600;}
+  .sub{color:var(--dim);font-family:var(--mono);font-size:12px;margin-bottom:18px;}
+
+  .controls{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
+  button{
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    padding:9px 14px;border-radius:6px;font-family:var(--sans);font-size:13px;cursor:pointer;
+    font-weight:500;transition:border-color .15s, opacity .15s;
+  }
+  button:hover:not(:disabled){border-color:var(--accent);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  button.primary{background:var(--accent);color:#1a1712;border-color:var(--accent);font-weight:700;}
+  button.danger{background:#3a1f1c;border-color:#7a3a34;color:#f0b8ae;}
+  button.danger:hover:not(:disabled){border-color:var(--critical);}
+  button.ghost{background:transparent;}
+
+  .stagebadge{
+    font-family:var(--mono);font-size:11.5px;padding:6px 12px;border-radius:20px;
+    border:1px solid var(--line);color:var(--dim);margin-left:auto;
+  }
+  .stagebadge.live{color:#1a1712;font-weight:700;}
+
+  .grid{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:start;}
+  @media (max-width:980px){.grid{grid-template-columns:1fr;}}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;}
+  h2.section{font-size:11px;text-transform:uppercase;letter-spacing:1.1px;color:var(--dim);
+    margin:0 0 10px 0;border-bottom:1px solid var(--line);padding-bottom:8px;display:flex;justify-content:space-between;}
+
+  #mapid{width:100%;height:480px;border-radius:6px;background:#181510;}
+  .leaflet-container{background:#181510 !important;font-family:var(--sans);}
+
+  .legend{display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--dim);font-family:var(--mono);flex-wrap:wrap;}
+  .legend .lg{display:flex;align-items:center;gap:5px;}
+  .sw{width:9px;height:9px;border-radius:50%;display:inline-block;}
+
+  .statrow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+  .statcard{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:10px 12px;}
+  .statcard .lbl{font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;}
+  .statcard .val{font-family:var(--mono);font-size:20px;margin-top:3px;}
+
+  .nodehead{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+  .nodehead .dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+  .nodehead .id{font-family:var(--mono);font-size:16px;font-weight:700;}
+  .nodehead .meta{color:var(--dim);font-size:11.5px;font-family:var(--mono);}
+
+  .readgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
+  .readcard{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;}
+  .readcard .rl{font-size:10.5px;color:var(--dim);}
+  .readcard .rv{font-family:var(--mono);font-size:17px;margin-top:2px;}
+
+  .chartwrap{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:8px;margin-bottom:8px;}
+  .chartwrap .ct{font-size:10.5px;color:var(--dim);margin-bottom:4px;font-family:var(--mono);}
+  .chartwrap canvas{max-height:80px;}
+
+  .tablewrap{max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:6px;margin-top:8px;}
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;}
+  th,td{padding:6px 8px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap;}
+  th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--panel);}
+  tr.rowsel{background:rgba(201,138,58,.12);}
+  tr{cursor:pointer;}
+  tr:hover{background:var(--panel-2);}
+
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;color:#14120e;}
+  .badge.normal{background:var(--normal);}
+  .badge.watch{background:var(--watch);}
+  .badge.developing{background:var(--developing);}
+  .badge.critical{background:var(--critical);color:#fff;}
+
+  .footer-note{color:var(--dim);font-size:11px;font-family:var(--mono);margin-top:16px;line-height:1.6;}
+  .empty{color:var(--dim);font-size:12.5px;padding:20px 4px;text-align:center;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.28.4/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+  window.addEventListener('load', function () {
+    setTimeout(function () {
+      var root = document.getElementById('root');
+      if (root && root.children.length === 0) {
+        var missing = [];
+        if (typeof React === 'undefined') missing.push('React');
+        if (typeof ReactDOM === 'undefined') missing.push('ReactDOM');
+        if (typeof Babel === 'undefined') missing.push('Babel');
+        if (typeof L === 'undefined') missing.push('Leaflet');
+        if (typeof Chart === 'undefined') missing.push('Chart.js');
+        root.innerHTML =
+          '<div style="font-family:sans-serif;color:#eee6d6;background:#3a1f1c;border:1px solid #7a3a34;' +
+          'border-radius:8px;padding:16px 18px;max-width:640px;">' +
+          '<b>Dashboard failed to load' + (missing.length ? ': ' + missing.join(', ') + ' did not load' : '') + '.</b><br/><br/>' +
+          'This usually means one of the CDN scripts (React, Leaflet, Babel, Chart.js) could not be reached. ' +
+          'Check your internet connection, or that no ad-blocker / firewall is blocking cdnjs.cloudflare.com, then reload this page.' +
+          '</div>';
+      }
+    }, 2500);
+  });
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+/* =========================================================================
+   CORE SIMULATION LOGIC
+   Layout algorithm mirrors Member 3's generator exactly (same PRNG, same
+   zone math) so node IDs / positions / clusters match the shared layout.
+   Reading shape mirrors Member 1 (baseline fields) + Member 2 (state field).
+   ========================================================================= */
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const ZONES = [
+  { key: 'A', name: 'Panel A — North Gallery', color: '#5aa3d8', cx: 210, cy: 170, w: 260, h: 190, rot: -6, weight: 0.32 },
+  { key: 'B', name: 'Panel B — Central Gallery', color: '#e0a941', cx: 490, cy: 340, w: 290, h: 230, rot: 5, weight: 0.38 },
+  { key: 'C', name: 'Panel C — South Gallery', color: '#4caf7d', cx: 230, cy: 500, w: 250, h: 170, rot: -3, weight: 0.30 },
+];
+const GATEWAY = { x: 400, y: 330 };
+
+function rotate(px, py, cx, cy, deg) {
+  const rad = (deg * Math.PI) / 180;
+  const dx = px - cx, dy = py - cy;
+  return { x: cx + dx * Math.cos(rad) - dy * Math.sin(rad), y: cy + dx * Math.sin(rad) + dy * Math.cos(rad) };
+}
+
+function buildLayout(totalNodes, radius, seedVal) {
+  const rng = mulberry32(seedVal * 97 + totalNodes);
+  let allocations = ZONES.map((z) => Math.max(3, Math.round(totalNodes * z.weight)));
+  let diff = totalNodes - allocations.reduce((a, b) => a + b, 0);
+  allocations[1] += diff;
+
+  const nodes = [];
+  let idCounter = 1;
+
+  ZONES.forEach((zone, zi) => {
+    const n = allocations[zi];
+    const cols = Math.ceil(Math.sqrt(n * (zone.w / zone.h)));
+    const rows = Math.ceil(n / cols);
+    let placed = 0;
+    const zoneNodes = [];
+    for (let r = 0; r < rows && placed < n; r++) {
+      for (let c = 0; c < cols && placed < n; c++) {
+        const fx = cols === 1 ? 0.5 : c / (cols - 1);
+        const fy = rows === 1 ? 0.5 : r / (rows - 1);
+        let x = zone.cx - zone.w / 2 + fx * zone.w + (rng() - 0.5) * 18;
+        let y = zone.cy - zone.h / 2 + fy * zone.h + (rng() - 0.5) * 18;
+        const rp = rotate(x, y, zone.cx, zone.cy, zone.rot);
+        const id = 'N' + String(idCounter).padStart(2, '0');
+        zoneNodes.push({
+          id, panel: zone.key, panelName: zone.name, color: zone.color,
+          x: Math.round(rp.x), y: Math.round(rp.y),
+          cluster: null, neighbours: [],
+        });
+        idCounter++; placed++;
+      }
+    }
+    const clusterSize = 5;
+    zoneNodes.forEach((nd, i) => { nd.cluster = zone.key + (Math.floor(i / clusterSize) + 1); });
+    nodes.push(...zoneNodes);
+  });
+
+  const MAXN = 4;
+  nodes.forEach((n) => {
+    const dists = nodes.filter((m) => m.id !== n.id)
+      .map((m) => ({ id: m.id, d: Math.hypot(m.x - n.x, m.y - n.y) }))
+      .sort((a, b) => a.d - b.d);
+    n._cand = dists.filter((d) => d.d <= radius).slice(0, MAXN).map((d) => d.id);
+  });
+  const byId = {}; nodes.forEach((n) => (byId[n.id] = n));
+  nodes.forEach((n) => {
+    n._cand.forEach((id) => {
+      if (!n.neighbours.includes(id)) n.neighbours.push(id);
+      const other = byId[id];
+      if (!other.neighbours.includes(n.id)) other.neighbours.push(n.id);
+    });
+    delete n._cand;
+  });
+  nodes.forEach((n) => n.neighbours.sort());
+  return nodes;
+}
+
+const BASE = { tilt_deg: 1.0, vibration_g: 0.02, crack_mm: 0.1, displacement_mm: 0.5 };
+const NOISE = { tilt_deg: 0.03, vibration_g: 0.005, crack_mm: 0.02, displacement_mm: 0.05 };
+
+function stateForSeverity(sev) {
+  if (sev <= 0.001) return 'normal';
+  if (sev <= 0.25) return 'watch';
+  if (sev <= 0.6) return 'developing';
+  return 'critical';
+}
+
+function readingForNode(node, sev, rng) {
+  const jitter = (amp) => (rng() - 0.5) * 2 * amp;
+  return {
+    node_id: node.id,
+    timestamp: new Date().toISOString(),
+    tilt_deg: +(BASE.tilt_deg + jitter(NOISE.tilt_deg) + sev * 4.2).toFixed(3),
+    vibration_g: +(BASE.vibration_g + jitter(NOISE.vibration_g) + sev * 0.16).toFixed(4),
+    displacement_mm: +(BASE.displacement_mm + jitter(NOISE.displacement_mm) + sev * 9.5).toFixed(3),
+    crack_mm: +(BASE.crack_mm + jitter(NOISE.crack_mm) + sev * 1.6).toFixed(3),
+    state: stateForSeverity(sev),
+  };
+}
+
+const STATE_COLOR = { normal: '#4caf7d', watch: '#dfc23f', developing: '#e2891f', critical: '#e0524f' };
+const TICK_MS = 1000;
+const HISTORY_LEN = 40;
+
+/* =========================================================================
+   REACT DASHBOARD
+   ========================================================================= */
+
+function Sparkline({ canvasRef }) {
+  return <canvas ref={canvasRef} height="70"></canvas>;
+}
+
+function App() {
+  const nodesRef = useRef(buildLayout(32, 95, 1));
+  const nodeMapRef = useRef({});
+  nodesRef.current.forEach((n) => (nodeMapRef.current[n.id] = n));
+
+  const [running, setRunning] = useState(false);
+  const [tickCount, setTickCount] = useState(0);
+  const [readings, setReadings] = useState(() => {
+    const init = {};
+    nodesRef.current.forEach((n) => { init[n.id] = readingForNode(n, 0, Math.random); });
+    return init;
+  });
+  const [selectedId, setSelectedId] = useState('N01');
+  const [eventActive, setEventActive] = useState(false);
+  const [eventStage, setEventStage] = useState('idle'); // idle | early | developing | strong
+  const [spikeActive, setSpikeActive] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+
+  const severityRef = useRef({}); // node_id -> severity 0..1
+  const epicenterRef = useRef(null);
+  const spikeNodeRef = useRef(null);
+  const spikeTicksLeftRef = useRef(0);
+  const eventTickRef = useRef(0);
+  const rngRef = useRef(mulberry32(Date.now() % 100000));
+  const historyRef = useRef({}); // node_id -> {t:[], tilt:[], vib:[], disp:[], crack:[]}
+  nodesRef.current.forEach((n) => {
+    if (!historyRef.current[n.id]) historyRef.current[n.id] = { t: [], tilt: [], vib: [], disp: [], crack: [] };
+  });
+
+  const mapObjRef = useRef(null);
+  const markerRefsRef = useRef({});
+  const chartRefs = { tilt: useRef(null), vib: useRef(null), disp: useRef(null), crack: useRef(null) };
+  const chartObjs = useRef({});
+
+  // ---- Leaflet map setup (runs once) ----
+  useEffect(() => {
+    const map = L.map('mapid', { crs: L.CRS.Simple, minZoom: -2, maxZoom: 2, zoomControl: true, attributionControl: false });
+    const bounds = [[-600, 0], [0, 800]];
+    map.fitBounds(bounds);
+    map.setMaxBounds([[-660, -60], [60, 860]]);
+    mapObjRef.current = map;
+
+    // zone outlines
+    ZONES.forEach((zone) => {
+      const pts = [
+        [-zone.w / 2, -zone.h / 2], [zone.w / 2, -zone.h / 2],
+        [zone.w / 2, zone.h / 2], [-zone.w / 2, zone.h / 2],
+      ].map((p) => rotate(zone.cx + p[0], zone.cy + p[1], zone.cx, zone.cy, zone.rot));
+      const latlngs = pts.map((p) => [-p.y, p.x]);
+      L.polygon(latlngs, { color: zone.color, weight: 1.2, fillColor: zone.color, fillOpacity: 0.05, dashArray: '2 5' }).addTo(map);
+      L.marker([-(zone.cy - zone.h / 2) + 14, zone.cx], {
+        icon: L.divIcon({ className: '', html: `<div style="font-family:var(--mono);font-size:11px;color:${zone.color};white-space:nowrap;transform:translateX(-50%);">${zone.name}</div>`, iconSize: [0, 0] }),
+      }).addTo(map);
+    });
+
+    // gateway
+    L.marker([-GATEWAY.y, GATEWAY.x], {
+      icon: L.divIcon({
+        className: '', iconSize: [16, 16], iconAnchor: [8, 8],
+        html: `<div style="width:16px;height:16px;background:#c98a3a;border-radius:3px;"></div>`,
+      }),
+    }).addTo(map).bindTooltip('GATEWAY (edge / Raspberry Pi)', { direction: 'top' });
+
+    // neighbour edges
+    const drawn = new Set();
+    nodesRef.current.forEach((n) => {
+      n.neighbours.forEach((nb) => {
+        const key = [n.id, nb].sort().join('-');
+        if (drawn.has(key)) return; drawn.add(key);
+        const m = nodeMapRef.current[nb];
+        L.polyline([[-n.y, n.x], [-m.y, m.x]], { color: '#544a37', weight: 1, opacity: 0.6 }).addTo(map);
+      });
+    });
+
+    // node markers
+    nodesRef.current.forEach((n) => {
+      const marker = L.circleMarker([-n.y, n.x], {
+        radius: 7, color: '#0d0c09', weight: 1.5, fillColor: STATE_COLOR.normal, fillOpacity: 1,
+      }).addTo(map);
+      marker.bindTooltip(n.id, { permanent: false, direction: 'top' });
+      marker.on('click', () => setSelectedId(n.id));
+      markerRefsRef.current[n.id] = marker;
+    });
+
+    return () => map.remove();
+  }, []);
+
+  // ---- update marker colors when readings change ----
+  useEffect(() => {
+    Object.entries(readings).forEach(([id, r]) => {
+      const marker = markerRefsRef.current[id];
+      if (marker) marker.setStyle({ fillColor: STATE_COLOR[r.state] || STATE_COLOR.normal, radius: id === selectedId ? 9 : 7 });
+    });
+  }, [readings, selectedId]);
+
+  // ---- highlight selected marker ring ----
+  useEffect(() => {
+    Object.entries(markerRefsRef.current).forEach(([id, marker]) => {
+      marker.setStyle({ weight: id === selectedId ? 3 : 1.5, color: id === selectedId ? '#fff' : '#0d0c09' });
+    });
+  }, [selectedId]);
+
+  // ---- simulation tick ----
+  useEffect(() => {
+    if (!running) return;
+    const iv = setInterval(() => {
+      const rng = rngRef.current;
+      const nodes = nodesRef.current;
+      const byId = nodeMapRef.current;
+
+      // advance subsidence event staging
+      if (eventActive) {
+        eventTickRef.current += 1;
+        const et = eventTickRef.current;
+        if (et === 1) {
+          const candidates = nodes.filter((n) => n.panel === 'B');
+          const ep = candidates[Math.floor(rng() * candidates.length)] || nodes[0];
+          epicenterRef.current = ep;
+          severityRef.current[ep.id] = 0.08;
+          setEventStage('early');
+        } else if (epicenterRef.current) {
+          const ep = epicenterRef.current;
+          severityRef.current[ep.id] = Math.min(1, (severityRef.current[ep.id] || 0) + 0.09);
+
+          if (et >= 4) {
+            setEventStage((s) => (s === 'early' ? 'developing' : s));
+            ep.neighbours.forEach((nid) => {
+              severityRef.current[nid] = Math.min(0.75, (severityRef.current[nid] || 0) + 0.05);
+            });
+          }
+          if (et >= 9) {
+            setEventStage('strong');
+            const clusterPeers = nodes.filter((n) => n.cluster === ep.cluster);
+            clusterPeers.forEach((n) => {
+              severityRef.current[n.id] = Math.min(1, (severityRef.current[n.id] || 0) + 0.04);
+            });
+          }
+        }
+      }
+
+      // random spike test (independent, short-lived, no neighbour spread)
+      if (spikeActive && !spikeNodeRef.current) {
+        const pick = nodes[Math.floor(rng() * nodes.length)];
+        spikeNodeRef.current = pick;
+        spikeTicksLeftRef.current = 3;
+      }
+      if (spikeNodeRef.current) {
+        severityRef.current[spikeNodeRef.current.id] = 0.85;
+        spikeTicksLeftRef.current -= 1;
+        if (spikeTicksLeftRef.current <= 0) {
+          const id = spikeNodeRef.current.id;
+          severityRef.current[id] = 0;
+          spikeNodeRef.current = null;
+          setSpikeActive(false);
+        }
+      }
+
+      const next = {};
+      nodes.forEach((n) => {
+        const sev = severityRef.current[n.id] || 0;
+        const r = readingForNode(n, sev, rng);
+        next[n.id] = r;
+        const h = historyRef.current[n.id];
+        h.t.push(tickCount);
+        h.tilt.push(r.tilt_deg); h.vib.push(r.vibration_g);
+        h.disp.push(r.displacement_mm); h.crack.push(r.crack_mm);
+        if (h.t.length > HISTORY_LEN) { h.t.shift(); h.tilt.shift(); h.vib.shift(); h.disp.shift(); h.crack.shift(); }
+      });
+      setReadings(next);
+      setTickCount((c) => c + 1);
+      setElapsed((e) => e + TICK_MS / 1000);
+    }, TICK_MS);
+    return () => clearInterval(iv);
+  }, [running, eventActive, spikeActive, tickCount]);
+
+  // ---- charts for selected node ----
+  useEffect(() => {
+    const specs = [
+      { key: 'tilt', ref: chartRefs.tilt, label: 'Tilt (°)', color: '#5aa3d8' },
+      { key: 'vib', ref: chartRefs.vib, label: 'Vibration (g)', color: '#e0a941' },
+      { key: 'disp', ref: chartRefs.disp, label: 'Displacement (mm)', color: '#e2891f' },
+      { key: 'crack', ref: chartRefs.crack, label: 'Crack (mm)', color: '#e0524f' },
+    ];
+    specs.forEach((s) => {
+      if (!s.ref.current) return;
+      if (!chartObjs.current[s.key]) {
+        chartObjs.current[s.key] = new Chart(s.ref.current.getContext('2d'), {
+          type: 'line',
+          data: { labels: [], datasets: [{ data: [], borderColor: s.color, backgroundColor: s.color + '22', borderWidth: 1.6, pointRadius: 0, fill: true, tension: 0.25 }] },
+          options: {
+            animation: false, responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { enabled: true } },
+            scales: {
+              x: { display: false },
+              y: { display: true, ticks: { color: '#a89a80', font: { size: 9 } }, grid: { color: '#3a3327' } },
+            },
+          },
+        });
+      }
+    });
+  }, [selectedId]);
+
+  useEffect(() => {
+    const h = historyRef.current[selectedId] || { t: [], tilt: [], vib: [], disp: [], crack: [] };
+    const map = { tilt: h.tilt, vib: h.vib, disp: h.disp, crack: h.crack };
+    Object.entries(chartObjs.current).forEach(([key, chart]) => {
+      chart.data.labels = h.t;
+      chart.data.datasets[0].data = map[key];
+      chart.update('none');
+    });
+  }, [readings, selectedId]);
+
+  // ---- controls ----
+  const handleStart = () => setRunning((r) => !r);
+  const handleTrigger = () => {
+    if (eventActive) return;
+    setEventActive(true);
+    setEventStage('early');
+    eventTickRef.current = 0;
+    epicenterRef.current = null;
+    if (!running) setRunning(true);
+  };
+  const handleSpike = () => {
+    if (spikeActive || spikeNodeRef.current) return;
+    setSpikeActive(true);
+    if (!running) setRunning(true);
+  };
+  const handleReset = () => {
+    setRunning(false);
+    setEventActive(false);
+    setEventStage('idle');
+    setSpikeActive(false);
+    severityRef.current = {};
+    epicenterRef.current = null;
+    spikeNodeRef.current = null;
+    spikeTicksLeftRef.current = 0;
+    eventTickRef.current = 0;
+    setTickCount(0);
+    setElapsed(0);
+    const init = {};
+    nodesRef.current.forEach((n) => {
+      init[n.id] = readingForNode(n, 0, Math.random);
+      historyRef.current[n.id] = { t: [], tilt: [], vib: [], disp: [], crack: [] };
+    });
+    setReadings(init);
+  };
+
+  const selectedNode = nodeMapRef.current[selectedId];
+  const selectedReading = readings[selectedId];
+
+  const alertCount = useMemo(() => Object.values(readings).filter((r) => r.state !== 'normal').length, [readings]);
+
+  const stageLabel = { idle: 'No active event', early: 'Early — epicenter forming', developing: 'Developing — neighbours affected', strong: 'Strong — cluster escalating' }[eventStage];
+
+  return (
+    <React.Fragment>
+      <h1>Member 4 — Live Mine Subsidence Dashboard</h1>
+      <div className="sub">AstraX · PS 26025 · Stage 1 simulation feed (local mock adapter — layout matches Member 3, readings match Member 1/2 schema)</div>
+
+      <div className="controls">
+        <button className="primary" onClick={handleStart}>{running ? '⏸ Stop Simulation' : '▶ Start Simulation'}</button>
+        <button className="danger" onClick={handleTrigger} disabled={eventActive}>⚠ Trigger Subsidence</button>
+        <button onClick={handleSpike} disabled={spikeActive}>⚡ Random Spike Test</button>
+        <button className="ghost" onClick={handleReset}>↺ Reset</button>
+        <span className={"stagebadge" + (eventActive ? " live" : "")} style={eventActive ? { background: STATE_COLOR[eventStage === 'early' ? 'watch' : eventStage === 'developing' ? 'developing' : 'critical'] } : {}}>
+          {stageLabel}
+        </span>
+      </div>
+
+      <div className="statrow">
+        <div className="statcard"><div className="lbl">Total nodes</div><div className="val">{nodesRef.current.length}</div></div>
+        <div className="statcard"><div className="lbl">In alert state</div><div className="val" style={{ color: alertCount ? '#e0524f' : undefined }}>{alertCount}</div></div>
+        <div className="statcard"><div className="lbl">Sim elapsed</div><div className="val">{elapsed.toFixed(0)}s</div></div>
+        <div className="statcard"><div className="lbl">Ticks</div><div className="val">{tickCount}</div></div>
+      </div>
+
+      <div className="grid">
+        <div className="panel">
+          <h2 className="section"><span>Mine Surface Map</span><span>32 nodes · 3 panels</span></h2>
+          <div id="mapid"></div>
+          <div className="legend">
+            <div className="lg"><span className="sw" style={{ background: STATE_COLOR.normal }}></span>Normal</div>
+            <div className="lg"><span className="sw" style={{ background: STATE_COLOR.watch }}></span>Watch</div>
+            <div className="lg"><span className="sw" style={{ background: STATE_COLOR.developing }}></span>Developing</div>
+            <div className="lg"><span className="sw" style={{ background: STATE_COLOR.critical }}></span>Critical</div>
+            <div className="lg"><span className="sw" style={{ background: '#c98a3a', borderRadius: 2 }}></span>Gateway</div>
+          </div>
+
+          <h2 className="section" style={{ marginTop: 16 }}><span>Node Registry</span><span>click a row or marker to select</span></h2>
+          <div className="tablewrap">
+            <table>
+              <thead><tr><th>ID</th><th>Panel</th><th>Cluster</th><th>Status</th><th>Tilt°</th><th>Disp mm</th></tr></thead>
+              <tbody>
+                {nodesRef.current.map((n) => {
+                  const r = readings[n.id];
+                  return (
+                    <tr key={n.id} className={n.id === selectedId ? 'rowsel' : ''} onClick={() => setSelectedId(n.id)}>
+                      <td>{n.id}</td><td>{n.panel}</td><td>{n.cluster}</td>
+                      <td><span className={"badge " + (r ? r.state : 'normal')}>{r ? r.state : 'normal'}</span></td>
+                      <td>{r ? r.tilt_deg : '—'}</td><td>{r ? r.displacement_mm : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="panel">
+          <h2 className="section"><span>Selected Node</span></h2>
+          {selectedNode && selectedReading ? (
+            <React.Fragment>
+              <div className="nodehead">
+                <span className="dot" style={{ background: STATE_COLOR[selectedReading.state] }}></span>
+                <span className="id">{selectedNode.id}</span>
+                <span className="meta">{selectedNode.panelName} · cluster {selectedNode.cluster} · {selectedNode.neighbours.length} neighbours</span>
+              </div>
+
+              <div className="readgrid">
+                <div className="readcard"><div className="rl">Tilt</div><div className="rv">{selectedReading.tilt_deg}°</div></div>
+                <div className="readcard"><div className="rl">Vibration</div><div className="rv">{selectedReading.vibration_g} g</div></div>
+                <div className="readcard"><div className="rl">Displacement</div><div className="rv">{selectedReading.displacement_mm} mm</div></div>
+                <div className="readcard"><div className="rl">Crack width</div><div className="rv">{selectedReading.crack_mm} mm</div></div>
+              </div>
+
+              <div className="chartwrap"><div className="ct">Tilt (°) — last {HISTORY_LEN} ticks</div><Sparkline canvasRef={chartRefs.tilt} /></div>
+              <div className="chartwrap"><div className="ct">Vibration (g) — last {HISTORY_LEN} ticks</div><Sparkline canvasRef={chartRefs.vib} /></div>
+              <div className="chartwrap"><div className="ct">Displacement (mm) — last {HISTORY_LEN} ticks</div><Sparkline canvasRef={chartRefs.disp} /></div>
+              <div className="chartwrap"><div className="ct">Crack width (mm) — last {HISTORY_LEN} ticks</div><Sparkline canvasRef={chartRefs.crack} /></div>
+            </React.Fragment>
+          ) : (
+            <div className="empty">Select a node on the map or in the table to see live readings.</div>
+          )}
+        </div>
+      </div>
+
+      <div className="footer-note">
+        Data source: local mock adapter (no backend yet). Node layout mirrors Member 3's generator 1:1 (seed A, 32 nodes, 95m radius).
+        Reading fields match Member 1's schema (tilt_deg, vibration_g, displacement_mm, crack_mm) plus Member 2's `state` field.
+        Swap `readingForNode()` / the tick effect for Member 5's real integrated feed once available — the rest of this dashboard doesn't need to change.
+      </div>
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
