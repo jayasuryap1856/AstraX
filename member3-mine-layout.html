@@ -2,202 +2,493 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Member 3 — Mine Map + Sensor Positions</title>
+<title>Member 3 — Mine Layout &amp; Neighbour Graph</title>
 <style>
   :root{
-    --bg:#12100e;
-    --panel:#1c1815;
-    --line:#332c26;
-    --amber:#e8a33d;
-    --text:#eae4da;
-    --dim:#8f8577;
+    --bg:#15130f; --panel:#1d1a15; --panel-2:#242019; --line:#3a3327;
+    --text:#eee6d6; --dim:#a89a80; --accent:#c98a3a;
+    --pA:#5aa3d8; --pB:#e0a941; --pC:#4caf7d;
+    --mono:ui-monospace,'SF Mono','Cascadia Mono',Consolas,monospace;
+    --sans:'Segoe UI',system-ui,-apple-system,sans-serif;
   }
   *{box-sizing:border-box;}
-  body{
-    margin:0;
-    background:var(--bg);
-    color:var(--text);
-    font-family:'Segoe UI',system-ui,sans-serif;
-    padding:28px;
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
+  body{padding:24px;max-width:1180px;margin:0 auto;}
+  h1{font-size:19px;margin:0 0 2px;}
+  .sub{color:var(--dim);font-family:var(--mono);font-size:12px;margin-bottom:20px;}
+  .controls{display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;}
+  .controls label{font-size:12.5px;color:var(--dim);margin-right:4px;}
+  select,button{
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    padding:8px 12px;border-radius:6px;font-family:var(--sans);font-size:13px;cursor:pointer;
   }
-  h1{margin:0 0 4px;font-size:20px;}
-  h1 span{color:var(--amber);}
-  .sub{color:var(--dim);font-size:13px;margin-bottom:20px;}
-  .controls{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap;}
-  button,select{
-    background:var(--panel);color:var(--text);border:1px solid var(--line);
-    padding:9px 16px;font-size:13px;cursor:pointer;border-radius:3px;
+  button.primary{background:var(--accent);color:#1a1712;border-color:var(--accent);font-weight:600;}
+  button:hover{border-color:var(--accent);}
+  .grid{display:grid;grid-template-columns:1.15fr 1fr;gap:18px;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;}
+  h2.section{font-size:11px;text-transform:uppercase;letter-spacing:1.1px;color:var(--dim);margin:0 0 10px;border-bottom:1px solid var(--line);padding-bottom:8px;}
+  svg{width:100%;height:auto;display:block;background:#181510;border-radius:6px;}
+  .legend{display:flex;gap:16px;margin-top:10px;font-size:11.5px;color:var(--dim);font-family:var(--mono);flex-wrap:wrap;}
+  .legend .lg{display:flex;align-items:center;gap:5px;}
+  .sw{width:9px;height:9px;border-radius:50%;display:inline-block;}
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;}
+  th,td{padding:5px 6px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap;}
+  th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--panel);}
+  .tablewrap{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:6px;}
+  textarea{
+    width:100%;height:230px;background:#100e0b;color:#c9e6cf;border:1px solid var(--line);
+    border-radius:6px;font-family:var(--mono);font-size:11px;padding:10px;resize:vertical;
   }
-  button:hover{border-color:#5a4c3e;}
-  label{color:var(--dim);font-size:13px;display:flex;align-items:center;gap:8px;}
-  .layout{display:grid;grid-template-columns:1.2fr 1fr;gap:20px;}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:16px;}
-  .panel h2{margin:0 0 12px;font-size:12px;letter-spacing:0.5px;color:var(--dim);text-transform:uppercase;}
-  #mapsvg{background:#191512;border:1px solid var(--line);border-radius:4px;width:100%;height:auto;}
-  .node-dot{fill:var(--amber);stroke:#000;stroke-width:0.5;cursor:pointer;}
-  .node-dot.selected{stroke:var(--text);stroke-width:2;}
-  table{width:100%;border-collapse:collapse;font-size:12px;}
-  th,td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--line);}
-  th{color:var(--dim);font-weight:600;font-size:10px;text-transform:uppercase;}
-  pre{
-    background:#0f0d0b;border:1px solid var(--line);border-radius:4px;
-    padding:12px;font-size:11px;line-height:1.5;max-height:260px;overflow-y:auto;
-    margin:0;white-space:pre-wrap;word-break:break-word;
-  }
+  .stat{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;padding:4px 0;}
+  .stat b{color:var(--text);}
+  .row2{display:flex;gap:14px;margin-top:14px;}
+  .row2 .panel{flex:1;}
+  circle.node{stroke:#0d0c09;stroke-width:1.5;}
+  line.edge{stroke:#544a37;stroke-width:1;opacity:.6;}
+  text.lbl{font-family:var(--mono);font-size:7.5px;fill:#8a7c62;}
+  path.zone{fill-opacity:.05;stroke-dasharray:2 5;stroke-width:1.2;}
 </style>
 </head>
 <body>
 
-<h1>Member 3 <span>/ Mine Map + Sensor Positions</span></h1>
-<div class="sub">Static layout only — node IDs, coordinates, clusters, neighbor lists. No live readings, no events.</div>
+<h1>Member 3 — Virtual Mine Layout &amp; Neighbour Graph</h1>
+<div class="sub">AstraX · PS 26025 · Node registry feed for Member 1 (sensor generator) &amp; Member 2 (subsidence event / correlation logic)</div>
 
 <div class="controls">
-  <label>Nodes
-    <select id="nodeCount">
-      <option value="20">20</option>
-      <option value="32" selected>32</option>
-      <option value="50">50</option>
-    </select>
-  </label>
-  <button id="btnRegen">Regenerate Layout</button>
+  <label>Node count</label>
+  <select id="nodeCount">
+    <option value="8">8</option>
+    <option value="20">20</option>
+    <option value="32" selected>32</option>
+    <option value="50">50</option>
+  </select>
+
+  <label>Neighbour radius (m)</label>
+  <select id="radius">
+    <option value="70">Tight (70m)</option>
+    <option value="95" selected>Balanced (95m)</option>
+    <option value="130">Wide (130m)</option>
+  </select>
+
+  <label>Layout seed</label>
+  <select id="seed">
+    <option value="1">Seed A</option>
+    <option value="2">Seed B</option>
+    <option value="3">Seed C</option>
+  </select>
+
+  <button class="primary" id="regen">Regenerate Layout</button>
+  <button id="copyBtn">Copy JSON</button>
+  <button id="downloadBtn">Download mine_layout.json</button>
 </div>
 
-<div class="layout">
+<div class="grid">
   <div class="panel">
-    <h2>Mine Layout</h2>
-    <svg id="mapsvg" viewBox="0 0 760 460"></svg>
+    <h2 class="section">Mine Surface Layout</h2>
+    <svg id="mapSvg" viewBox="0 0 800 600"></svg>
+
+    <div class="legend">
+      <div class="lg"><span class="sw" style="background:#5aa3d8"></span>Panel A — North Gallery</div>
+      <div class="lg"><span class="sw" style="background:#e0a941"></span>Panel B — Central Gallery (active risk zone)</div>
+      <div class="lg"><span class="sw" style="background:#4caf7d"></span>Panel C — South Gallery</div>
+      <div class="lg"><span class="sw" style="background:#c98a3a"></span>Edge Gateway (Raspberry Pi)</div>
+    </div>
   </div>
+
   <div class="panel">
-    <h2>Node Table</h2>
-    <table>
-      <thead><tr><th>ID</th><th>Cluster</th><th>X</th><th>Y</th><th>Neighbors</th></tr></thead>
-      <tbody id="tbody"></tbody>
-    </table>
+    <h2 class="section">Layout Summary</h2>
+    <div class="stat"><span>Total nodes</span><b id="statNodes">—</b></div>
+    <div class="stat"><span>Panels / zones</span><b>3 (A, B, C)</b></div>
+    <div class="stat"><span>Clusters</span><b id="statClusters">—</b></div>
+    <div class="stat"><span>Mesh edges (neighbour links)</span><b id="statEdges">—</b></div>
+    <div class="stat"><span>Avg neighbours / node</span><b id="statAvgN">—</b></div>
+    <div class="stat"><span>Isolated nodes (0 neighbours)</span><b id="statIsolated">—</b></div>
+
+    <h2 class="section" style="margin-top:16px;">Node Registry</h2>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>Panel</th><th>Cluster</th>
+            <th>X(m)</th><th>Y(m)</th><th>Neighbours</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
   </div>
 </div>
 
-<div class="panel" style="margin-top:20px">
-  <h2>Layout JSON (handoff to Member 5)</h2>
-  <pre id="jsonOut"></pre>
+<div class="row2">
+  <div class="panel">
+    <h2 class="section">Live JSON Output — Node Registry</h2>
+    <p style="font-size:11.5px;color:var(--dim);margin:0 0 8px;">
+      Import <code>nodes</code> directly into Member 1's generator and Member 2's correlation logic.
+    </p>
+    <textarea id="jsonOut" readonly></textarea>
+  </div>
 </div>
 
 <script>
-const svgNS = "http://www.w3.org/2000/svg";
-let nodes = [];
-let selectedId = null;
+(function(){
+  const NS='http://www.w3.org/2000/svg';
+  const svg=document.getElementById('mapSvg');
 
-function buildLayout(count){
-  nodes = [];
-  const clusterCount = Math.max(3, Math.round(count/6));
-  const centers = [];
-  for(let i=0;i<clusterCount;i++){
-    centers.push([
-      100 + Math.random()*560,
-      80 + Math.random()*300
-    ]);
+  let regenerationNumber=0;
+
+  function mulberry32(a){
+    return function(){
+      a|=0;
+      a=a+0x6D2B79F5|0;
+      let t=Math.imul(a^a>>>15,1|a);
+      t=t+Math.imul(t^t>>>7,61|t)^t;
+      return ((t^t>>>14)>>>0)/4294967296;
+    };
   }
-  let id = 0;
-  for(let i=0;i<count;i++){
-    const ci = i % clusterCount;
-    const c = centers[ci];
-    const angle = Math.random()*Math.PI*2;
-    const r = 25 + Math.random()*35;
-    nodes.push({
-      id: 'N' + String(id+1).padStart(2,'0'),
-      cluster: ci,
-      x: Math.round(Math.max(20, Math.min(740, c[0] + Math.cos(angle)*r))),
-      y: Math.round(Math.max(20, Math.min(440, c[1] + Math.sin(angle)*r)))
-    });
-    id++;
+
+  const ZONES=[
+    {key:'A',name:'Panel A - North Gallery',color:'#5aa3d8',cx:210,cy:170,w:260,h:190,rot:-6,weight:0.32},
+    {key:'B',name:'Panel B - Central Gallery',color:'#e0a941',cx:490,cy:340,w:290,h:230,rot:5,weight:0.38},
+    {key:'C',name:'Panel C - South Gallery',color:'#4caf7d',cx:230,cy:500,w:250,h:170,rot:-3,weight:0.30}
+  ];
+
+  const GATEWAY={x:400,y:330};
+  const SCALE=1.0;
+
+  function rotate(px,py,cx,cy,deg){
+    const rad=deg*Math.PI/180;
+    const dx=px-cx;
+    const dy=py-cy;
+
+    return {
+      x:cx+dx*Math.cos(rad)-dy*Math.sin(rad),
+      y:cy+dx*Math.sin(rad)+dy*Math.cos(rad)
+    };
   }
-  nodes.forEach(n=>{
-    n.neighbors = nodes
-      .filter(o=>o.id!==n.id && o.cluster===n.cluster)
-      .map(o=>o.id);
-  });
-}
 
-function drawMap(){
-  const svg = document.getElementById('mapsvg');
-  svg.innerHTML = '';
-  const bg = document.createElementNS(svgNS,'rect');
-  bg.setAttribute('x',0);bg.setAttribute('y',0);
-  bg.setAttribute('width',760);bg.setAttribute('height',460);
-  bg.setAttribute('fill','#191512');
-  svg.appendChild(bg);
+  function buildLayout(totalNodes,radius,seedVal){
+    const rng=mulberry32(seedVal);
+    let allocations=ZONES.map(z=>Math.max(3,Math.round(totalNodes*z.weight)));
 
-  nodes.forEach(n=>{
-    n.neighbors.forEach(nb=>{
-      const other = nodes.find(o=>o.id===nb);
-      if(other.id > n.id) return;
-      const line = document.createElementNS(svgNS,'line');
-      line.setAttribute('x1',n.x);line.setAttribute('y1',n.y);
-      line.setAttribute('x2',other.x);line.setAttribute('y2',other.y);
-      line.setAttribute('stroke','#2a2420');
-      line.setAttribute('stroke-width','1');
-      svg.appendChild(line);
+    const diff=totalNodes-allocations.reduce((a,b)=>a+b,0);
+    allocations[1]+=diff;
+
+    const nodes=[];
+    let idCounter=1;
+
+    ZONES.forEach((zone,zi)=>{
+      const n=allocations[zi];
+      const cols=Math.ceil(Math.sqrt(n*(zone.w/zone.h)));
+      const rows=Math.ceil(n/cols);
+      let placed=0;
+      const zoneNodes=[];
+
+      for(let r=0;r<rows && placed<n;r++){
+        for(let c=0;c<cols && placed<n;c++){
+          const fx=cols===1?0.5:c/(cols-1);
+          const fy=rows===1?0.5:r/(rows-1);
+
+          const x=zone.cx-zone.w/2+fx*zone.w+(rng()-0.5)*18;
+          const y=zone.cy-zone.h/2+fy*zone.h+(rng()-0.5)*18;
+          const rp=rotate(x,y,zone.cx,zone.cy,zone.rot);
+          const id='N'+String(idCounter).padStart(2,'0');
+
+          zoneNodes.push({
+            id,
+            panel:zone.key,
+            panelName:zone.name,
+            color:zone.color,
+            x:Math.round(rp.x*SCALE),
+            y:Math.round(rp.y*SCALE),
+            row:r,
+            col:c,
+            cluster:null,
+            neighbours:[]
+          });
+
+          idCounter++;
+          placed++;
+        }
+      }
+
+      zoneNodes.forEach((node,index)=>{
+        node.cluster=zone.key+(Math.floor(index/5)+1);
+      });
+
+      nodes.push(...zoneNodes);
     });
-  });
 
-  nodes.forEach(n=>{
-    const dot = document.createElementNS(svgNS,'circle');
-    dot.setAttribute('cx',n.x);dot.setAttribute('cy',n.y);
-    dot.setAttribute('r',7);
-    dot.setAttribute('class','node-dot'+(selectedId===n.id?' selected':''));
-    dot.setAttribute('id','dot-'+n.id);
-    dot.addEventListener('click', ()=>{ selectedId=n.id; drawMap(); renderTable(); });
-    svg.appendChild(dot);
+    const nodeMap={};
+    nodes.forEach(node=>nodeMap[node.id]=node);
 
-    const label = document.createElementNS(svgNS,'text');
-    label.setAttribute('x',n.x);
-    label.setAttribute('y',n.y-11);
-    label.setAttribute('fill','#8f8577');
-    label.setAttribute('font-size','9');
-    label.setAttribute('text-anchor','middle');
-    label.textContent = n.id;
-    svg.appendChild(label);
-  });
-}
+    nodes.forEach(node=>{
+      const nearest=nodes
+        .filter(other=>other.id!==node.id)
+        .map(other=>({
+          id:other.id,
+          distance:Math.hypot(other.x-node.x,other.y-node.y)
+        }))
+        .sort((a,b)=>a.distance-b.distance)
+        .filter(item=>item.distance<=radius)
+        .slice(0,4);
 
-function renderTable(){
-  const tbody = document.getElementById('tbody');
-  tbody.innerHTML = nodes.map(n => `
-    <tr style="${selectedId===n.id ? 'background:#241f1a' : ''}">
-      <td>${n.id}</td>
-      <td>${n.cluster+1}</td>
-      <td>${n.x}</td>
-      <td>${n.y}</td>
-      <td>${n.neighbors.length}</td>
-    </tr>
-  `).join('');
+      nearest.forEach(item=>{
+        const other=nodeMap[item.id];
 
-  const payload = nodes.map(n=>({
-    node_id: n.id,
-    cluster: n.cluster+1,
-    x: n.x,
-    y: n.y,
-    neighbors: n.neighbors
-  }));
-  document.getElementById('jsonOut').textContent = JSON.stringify(payload, null, 2);
-}
+        if(!node.neighbours.includes(other.id)){
+          node.neighbours.push(other.id);
+        }
 
-document.getElementById('btnRegen').addEventListener('click', ()=>{
-  selectedId = null;
-  buildLayout(parseInt(document.getElementById('nodeCount').value));
-  drawMap();
-  renderTable();
-});
+        if(!other.neighbours.includes(node.id)){
+          other.neighbours.push(node.id);
+        }
+      });
+    });
 
-document.getElementById('nodeCount').addEventListener('change', (e)=>{
-  selectedId = null;
-  buildLayout(parseInt(e.target.value));
-  drawMap();
-  renderTable();
-});
+    nodes.forEach(node=>node.neighbours.sort());
+    return nodes;
+  }
 
-buildLayout(32);
-drawMap();
-renderTable();
+  function render(nodes){
+    svg.innerHTML='';
+
+    ZONES.forEach(zone=>{
+      const path=document.createElementNS(NS,'path');
+
+      const points=[
+        [-zone.w/2,-zone.h/2],
+        [zone.w/2,-zone.h/2],
+        [zone.w/2,zone.h/2],
+        [-zone.w/2,zone.h/2]
+      ].map(point=>rotate(
+        zone.cx+point[0],
+        zone.cy+point[1],
+        zone.cx,
+        zone.cy,
+        zone.rot
+      ));
+
+      path.setAttribute(
+        'd',
+        'M '+points.map(point=>point.x+' '+point.y).join(' L ')+' Z'
+      );
+      path.setAttribute('class','zone');
+      path.setAttribute('fill',zone.color);
+      path.setAttribute('stroke',zone.color);
+      svg.appendChild(path);
+
+      const label=document.createElementNS(NS,'text');
+      label.setAttribute('x',zone.cx);
+      label.setAttribute('y',zone.cy-zone.h/2-10);
+      label.setAttribute('text-anchor','middle');
+      label.setAttribute('fill',zone.color);
+      label.setAttribute('font-family','var(--mono)');
+      label.setAttribute('font-size','11');
+      label.textContent=zone.name;
+      svg.appendChild(label);
+    });
+
+    const gateway=document.createElementNS(NS,'rect');
+    gateway.setAttribute('x',GATEWAY.x-8);
+    gateway.setAttribute('y',GATEWAY.y-8);
+    gateway.setAttribute('width',16);
+    gateway.setAttribute('height',16);
+    gateway.setAttribute('fill','#c98a3a');
+    gateway.setAttribute('rx',3);
+    svg.appendChild(gateway);
+
+    const gatewayLabel=document.createElementNS(NS,'text');
+    gatewayLabel.setAttribute('x',GATEWAY.x);
+    gatewayLabel.setAttribute('y',GATEWAY.y+26);
+    gatewayLabel.setAttribute('text-anchor','middle');
+    gatewayLabel.setAttribute('fill','#c98a3a');
+    gatewayLabel.setAttribute('font-family','var(--mono)');
+    gatewayLabel.setAttribute('font-size','9');
+    gatewayLabel.textContent='GATEWAY';
+    svg.appendChild(gatewayLabel);
+
+    const drawn=new Set();
+    const nodeMap={};
+    nodes.forEach(node=>nodeMap[node.id]=node);
+
+    nodes.forEach(node=>{
+      node.neighbours.forEach(neighbourId=>{
+        const key=[node.id,neighbourId].sort().join('-');
+        if(drawn.has(key)) return;
+
+        drawn.add(key);
+        const neighbour=nodeMap[neighbourId];
+        const line=document.createElementNS(NS,'line');
+
+        line.setAttribute('x1',node.x);
+        line.setAttribute('y1',node.y);
+        line.setAttribute('x2',neighbour.x);
+        line.setAttribute('y2',neighbour.y);
+        line.setAttribute('class','edge');
+        svg.appendChild(line);
+      });
+    });
+
+    nodes.forEach(node=>{
+      const circle=document.createElementNS(NS,'circle');
+      circle.setAttribute('cx',node.x);
+      circle.setAttribute('cy',node.y);
+      circle.setAttribute('r',6);
+      circle.setAttribute('fill',node.color);
+      circle.setAttribute('class','node');
+
+      const title=document.createElementNS(NS,'title');
+      title.textContent=
+        node.id+' · '+node.panelName+
+        ' · cluster '+node.cluster+
+        ' · '+node.neighbours.length+' neighbours';
+
+      circle.appendChild(title);
+      svg.appendChild(circle);
+
+      const label=document.createElementNS(NS,'text');
+      label.setAttribute('x',node.x);
+      label.setAttribute('y',node.y-9);
+      label.setAttribute('text-anchor','middle');
+      label.setAttribute('class','lbl');
+      label.textContent=node.id;
+      svg.appendChild(label);
+    });
+  }
+
+  function updateTable(nodes){
+    document.getElementById('tbody').innerHTML=nodes.map(node=>
+      `<tr>
+        <td>${node.id}</td>
+        <td>${node.panel}</td>
+        <td>${node.cluster}</td>
+        <td>${node.x}</td>
+        <td>${node.y}</td>
+        <td>${node.neighbours.join(', ')||'—'}</td>
+      </tr>`
+    ).join('');
+  }
+
+  function updateStats(nodes){
+    document.getElementById('statNodes').textContent=nodes.length;
+
+    const clusters=new Set(nodes.map(node=>node.cluster));
+    document.getElementById('statClusters').textContent=clusters.size;
+
+    const edges=new Set();
+    nodes.forEach(node=>{
+      node.neighbours.forEach(neighbour=>{
+        edges.add([node.id,neighbour].sort().join('-'));
+      });
+    });
+
+    document.getElementById('statEdges').textContent=edges.size;
+
+    const average=(
+      nodes.reduce((total,node)=>total+node.neighbours.length,0)/nodes.length
+    ).toFixed(2);
+
+    document.getElementById('statAvgN').textContent=average;
+    document.getElementById('statIsolated').textContent=
+      nodes.filter(node=>node.neighbours.length===0).length;
+  }
+
+  function updateJSON(nodes){
+    const payload={
+      generated_at:new Date().toISOString(),
+      coordinate_system:'local ENU, metres, origin = edge gateway',
+      gateway:{
+        id:'GW01',
+        x:GATEWAY.x,
+        y:GATEWAY.y,
+        role:'Raspberry Pi edge gateway'
+      },
+      panels:ZONES.map(zone=>({
+        key:zone.key,
+        name:zone.name
+      })),
+      node_count:nodes.length,
+      nodes:nodes.map(node=>({
+        id:node.id,
+        panel:node.panel,
+        cluster:node.cluster,
+        x:node.x,
+        y:node.y,
+        neighbours:node.neighbours
+      }))
+    };
+
+    document.getElementById('jsonOut').value=
+      JSON.stringify(payload,null,2);
+
+    return payload;
+  }
+
+  let currentPayload=null;
+
+  function regenerate(createNewLayout=false){
+    const count=parseInt(document.getElementById('nodeCount').value,10);
+    const radius=parseInt(document.getElementById('radius').value,10);
+    const selectedSeed=parseInt(document.getElementById('seed').value,10);
+
+    /*
+      A normal refresh uses the selected seed.
+      A button click adds a changing value so the layout visibly changes.
+    */
+    const layoutSeed=createNewLayout
+      ? selectedSeed*1000003+(++regenerationNumber)
+      : selectedSeed*1000003;
+
+    const nodes=buildLayout(count,radius,layoutSeed);
+
+    render(nodes);
+    updateTable(nodes);
+    updateStats(nodes);
+    currentPayload=updateJSON(nodes);
+  }
+
+  document.getElementById('regen').onclick=()=>{
+    regenerate(true);
+  };
+
+  document.getElementById('nodeCount').onchange=()=>{
+    regenerate(false);
+  };
+
+  document.getElementById('radius').onchange=()=>{
+    regenerate(false);
+  };
+
+  document.getElementById('seed').onchange=()=>{
+    regenerate(false);
+  };
+
+  document.getElementById('copyBtn').onclick=()=>{
+    const textarea=document.getElementById('jsonOut');
+    textarea.select();
+    document.execCommand('copy');
+  };
+
+  document.getElementById('downloadBtn').onclick=()=>{
+    const blob=new Blob(
+      [JSON.stringify(currentPayload,null,2)],
+      {type:'application/json'}
+    );
+
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+
+    link.href=url;
+    link.download='mine_layout.json';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
+  };
+
+  regenerate(false);
+})();
 </script>
 </body>
 </html>
